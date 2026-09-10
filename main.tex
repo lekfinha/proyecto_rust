@@ -1,0 +1,34 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{parskip}
+
+\begin{document}
+El objetivo del proyecto es calcular los digitos de $e$ lo más rápido posible, utilizando la aproximación de Taylor. 
+
+La dificultad del proyecto se centra en el cálculo de los factoriales del denominador, por la complejidad de realizar la multiplicación de números grandes, considerando esto tenemos 2 ideas.
+
+La idea es seguir el método estándar usando \href{https://en.wikipedia.org/wiki/Binary_splitting}{Binary Spliting} y \href{http://numbers.computation.free.fr/Constants/Algorithms/fft.html}{FFT-based large multiplication}, aplicando paralelización
+
+Queremos hacer la comparación con \href{https://www.numberworld.org/digits/E/}{y-cruncher}, que es un programa que se ha usado para establecer récords. Considerando los recursos necesarios, la idea es calcular los primeros $1.000.000.000$ de dígitos lo más rápido posible.
+
+También está la opción de usar \href{https://crates.io/crates/rug}{rug} que permite interactuar con la lib de bajo nivel de \href{https://gmplib.org/}{GMP}, que permite optimizar las computaciones de números grandes (ya implementa multiplicación FFT-based), aunque no paraleliza, así que la idea es ocupar el método de arriba y en caso de que sea muy complicado tener este como respaldo.
+
+Otras referencias:
+\begin{itemize}
+  \item \href{https://stackoverflow.com/questions/13313933/what-is-the-fastest-way-to-calculate-e-to-2-trillion-digits/13317331#13317331}{Fastest way to calculate $e$...}
+\end{itemize}
+
+\vspace{.3in}
+\hfill
+\begin{minipage}{0.35\textwidth}
+Integrantes:
+\begin{itemize}
+    \item Andrés Sáez
+    \item Emilia Chávez
+    \item Franco Valdés
+    \item Vicente Álamos
+\end{itemize}
+\end{minipage}
+\end{document}
