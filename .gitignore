@@ -1,2 +1,8 @@
 main.*
 !main.tex
+!main.rs
+
+
+# Added by cargo
+
+/target
