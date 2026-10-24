@@ -1,0 +1,74 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage[bottom=1in]{geometry}
+
+\begin{document}
+
+\begin{center}
+    \Large \textbf{Informe técnico de avances: computación de los dígitos de $e$}
+\end{center}
+
+\section{Estado Actual, Arquitectura y Repositorio del Proyecto}
+El objetivo de este proyecto radica en computar $1.000.000.000$ de dígitos de la constante matemática $e$, rivalizando conceptualmente con programas orientados a récords como \texttt{y-cruncher}. A la fecha, se ha implementado la infraestructura lógica inicial utilizando Rust.
+
+La topología principal se basa en la serie de Taylor para la función exponencial, evaluada a través del método de partición binaria (\textit{Binary Splitting}). Este esquema de "divide y vencerás" construye un árbol recursivo que fusiona numeradores y denominadores parciales, lo que reduce la proliferación de términos grandes y permite converger en un tiempo asintótico de $\mathcal{O}(N\log(N)^2)$. Se diseñó una estructura numérica personalizada denominada \texttt{BigNat} orientada a la manipulación en "Little-endian base-$2^{15}$". Para procesar los productos en los niveles superiores del árbol, la arquitectura incluye una multiplicación fundamentada en la Transformada Rápida de Fourier (FFT), orquestada por medio del \textit{crate} \texttt{rustfft}, mientras que paraleliza independientemente los subárboles izquierdos y derechos maximizando el rendimiento multinúcleo.
+
+El avance y estado funcional del código puede revisarse íntegramente en el siguiente repositorio público: \url{https://github.com/lekfinha/proyecto_rust}
+
+Adicionalmente, al calcular $1.000.000$ dígitos, se evidencia que la implementación actual es más lenta comparando con el tiempo de ejecución de \texttt{y-cruncher}, lo que indica la necesidad de optimizaciones profundas y la reconsideración de ciertas decisiones de diseño.
+
+\section{Justificación de Características Clave de Rust}
+El diseño y rendimiento de la arquitectura actual se ha sustentado en el uso intencional de características distintivas del lenguaje Rust:
+
+\begin{itemize}
+    \item \textbf{Paralelismo Seguro por Defecto (Data-Race Freedom) vía \texttt{rayon}:} Se adoptó el \textit{crate} \texttt{rayon}, empleando su directiva \texttt{join(||, ||)} para bifurcar simultáneamente la evaluación del árbol de partición binaria en el algoritmo \textit{Hyperdescent}. Rust fue determinante en esta selección; el compilador verifica de forma estricta, en tiempo de compilación, que múltiples hilos no muten simultáneamente las variables estructurales sin protección, garantizando una paralelización agresiva inmune a condiciones de carrera (\textit{race conditions}).
+
+    \item \textbf{Gestión Determinista de Memoria (Ownership y Move Semantics):} La evaluación de mil millones de dígitos requiere instanciar estructuras de cientos de megabytes en cada nodo del árbol. Al transferir las variables $P$ y $Q$ por valor (movimiento) durante los retornos recursivos, el modelo de propiedad de Rust asegura que la memoria de los nodos hijos sea liberada de inmediato al salir de su ámbito (\textit{scope}). 
+
+    \item \textbf{Abstracciones de Costo Cero y Sistema de Rasgos (Traits):} Se planea una refactorización profunda para sobrecargar operadores matemáticos mediante los \textit{traits} nativos como \texttt{std::ops::AddAssign} y \texttt{std::ops::Mul}. Esta característica permite redactar algoritmos matemáticos complejos utilizando notación algebraica natural sin sacrificar la velocidad del código a bajo nivel, facilitando una futura transición a motores de cálculo externos como la Transformada Numérica (NTT).
+\end{itemize}
+
+\section{Barreras Estructurales y Dificultades con Rust}
+El camino hacia el rendimiento extremo reveló aspectos del ecosistema Rust que han obstaculizado el avance, exigiendo un rediseño táctico:
+
+\begin{itemize}
+    \item \textbf{Degradación de Precisión en Tipos Primitivos (\texttt{f64}) para HPC:} La dificultad más severa radica en la implementación actual de la multiplicación FFT. El ecosistema estándar en Rust (\texttt{rustfft}) opera internamente con números de coma flotante \texttt{f64}. Las especificaciones IEEE 754 imponen un límite absoluto de 53 bits a la mantisa (aprox. $9 \times 10^{15}$). Al calcular transformadas con arreglos gigantescos, el ruido de redondeo trigonométrico contamina la exactitud de los coeficientes. 
+
+    \item \textbf{Complicaciones de Portabilidad por Interfaces de Funciones Foráneas (FFI):} Frente al colapso matemático inminente de \texttt{f64}, la alternativa viable es incorporar el \textit{crate} \texttt{rug}, un conector a la biblioteca C GNU GMP. No obstante, Rust complica severamente esta ruta. La dependencia de bibliotecas C complica la compilación cruzada (\textit{cross-compiling}) de Cargo, obligando a los desarrolladores a instalar utilidades del sistema como el procesador de macros \texttt{m4} y herramientas GNU. Esto pervierte la naturaleza autocontenida y el flujo de Integración Continua del proyecto original en Rust puro.
+
+    \item \textbf{Curva de Aprendizaje del Borrow Checker en Mutación In-Situ (In-Place Mutation):} Para optimizar la memoria y evitar la fragmentación severa al escalar a mil millones de dígitos, se debe dejar de crear Vectores nuevos, reutilizando búferes preasignados. Sin embargo, el \textit{Borrow Checker} de Rust impide de forma restrictiva poseer referencias mutables aliasadas entre diferentes secciones del código. \end{itemize}
+
+% \section*{Conclusión Técnica y Pasos a Seguir}
+%
+% El desarrollo inicial evidencia un entendimiento robusto de las arquitecturas HPC, empleando paralelismo y división binaria. No obstante, las proyecciones teóricas demostraron que la utilización de operaciones de punto flotante en la transformada de Fourier acumula errores irrecuperables cuando se exceden ciertos límites topológicos de tamaño. Asimismo, las rutinas de conversión de base por fuerza bruta paralizarán el sistema en los pasos terminales del cálculo.
+%
+% El equipo debe enfocar su siguiente ciclo de desarrollo en dos frentes inmediatos. En primer lugar, la sustitución imperativa de la multiplicación basada en \texttt{rustfft} por un integrador aritmético blindado. Si se desea conservar un entorno en Rust puro y evitar la disonancia de herramientas C externas (FFI), la migración a la biblioteca \texttt{dashu} es altamente aconsejable, asumiendo un costo temporal menor frente a su estabilidad probada. Si, por el contrario, el objetivo central del proyecto reside exclusivamente en rivalizar en velocidad métrica bruta con los récords mundiales de \texttt{y-cruncher}, el acoplamiento de la biblioteca \texttt{rug} (y por extensión del motor GMP Schönhage-Strassen) es el único vector matemáticamente válido para manejar la convolución polinomial en escala logarítmica extrema sin perder la paridad del resultado. Finalmente, el equipo debe desarrollar o importar una heurística de Inversión de Newton para agilizar radicalmente el cuello de botella asintótico presente en la conversión de base decimal.
+
+\vspace{0.5cm}
+\textbf{Referencias y enlaces de interés:}
+\begin{itemize}
+    \item \href{https://en.wikipedia.org/wiki/Binary_splitting}{Binary Splitting (Wikipedia)}
+    \item \href{http://numbers.computation.free.fr/Constants/Algorithms/fft.html}{FFT-based large multiplication}
+    \item \href{https://stackoverflow.com/questions/13313933/what-is-the-fastest-way-to-calculate-e-to-2-trillion-digits/13317331#13317331}{StackOverflow: Fastest way to calculate $e$}
+    \item \href{https://www.numberworld.org/digits/E/}{y-cruncher: e Records}
+    \item \href{https://github.com/Mysticial/y-cruncher-Formulas}{Repositorio Github: y-cruncher-Formulas} (\href{https://github.com/Mysticial/y-cruncher-Formulas/blob/master/Official\%20Formulas/e\%20-\%20exp(1).cfg}{Fórmula de $e$})
+    \item \href{https://www.numberworld.org/y-cruncher/internals/binary-splitting.html}{y-cruncher Internals: Algoritmos de Binary Splitting e Hyperdescent}
+    % \item \href{https://en.wikipedia.org/wiki/Sch\%C3\%B6nhage\%E2\%80\%93Strassen_algorithm}{Algoritmo de Schönhage–Strassen (Wikipedia)}
+    \item \href{https://crates.io/crates/rug}{Crate: rug (GMP binding para Rust)}
+    \item \href{https://gmplib.org/}{The GNU Multiple Precision Arithmetic Library (GMP)}
+    % \item \href{https://users.rust-lang.org/t/announcing-dashu-yet-another-arbitrary-precision-library/81225}{Alternativa Rust puro para precisión arbitraria: dashu}
+\end{itemize}
+\vspace{.3in}
+\hfill
+\begin{minipage}{0.35\textwidth}
+Integrantes:
+\begin{itemize}
+    \item Andrés Sáez
+    \item Franco Valdés
+    \item Vicente Álamos
+\end{itemize}
+\end{minipage}
+\end{document}
